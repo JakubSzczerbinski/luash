@@ -69,31 +69,33 @@ function convert_to_cmd(obj)
 	error ("Unable to convert to cmd")
 end
 
-function cmd(executable_path)
-
+function cmd(args)
+	local argv = {}
+	for arg in args:gmatch("%S+") do
+		table.insert(argv, arg)
+	end
 	return make_cmd(
 		{ type="exec"
-		, command=executable_path
-		, argv={executable_path}
+		, command=argv[1]
+		, argv=argv
 		})
 end
 
 function Cmd.run_exec(cmd, ifd, ofd)
-	make_fd_stdin(ifd)
-	make_fd_stdout(ofd)
 	local pid = luash.fork()
 	if pid == 0 then
+		make_fd_stdin(ifd)
+		make_fd_stdout(ofd)
 		luash.execve(cmd.command, cmd.argv)
 	else
 		local pid, exit_status = luash.waitpid(pid, 0)
-		print("ended")
 		return exit_status
 	end
 end
 
 function Cmd.run_concat(cmd, ifd, ofd)
-	Cmd.run_cmd(cmd.cmd1)
-	return Cmd.run_cmd(cmd.cmd2)
+	Cmd.run_cmd(cmd.cmd1, ifd, ofd)
+	return Cmd.run_cmd(cmd.cmd2, ifd, ofd)
 end
 
 function Cmd.run_and(cmd, ifd, ofd)
@@ -109,11 +111,12 @@ function Cmd.run_pipe(cmd, ifd, ofd)
 	local pid = luash.fork()
 	if pid == 0 then
 		local status = Cmd.run_cmd(cmd.cmd1, ifd, p2)
-		luash.close(ifd);
-		luash.close(ofd);
 		luash.exit(status);
 	else
-		return Cmd.run_cmd(cmd.cmd2, p1, ofd)
+		luash.waitpid(pid, 0)
+		luash.close(p2)
+		local status = Cmd.run_cmd(cmd.cmd2, p1, ofd)
+		return status
 	end
 end
 
@@ -145,13 +148,13 @@ function Cmd.arg(cmd, argv_string)
 		error ("Cannot modify argument list if command does not invoke program")
 	end
 	local argv = {}
-	for arg in ipairs(cmd.argv) do
+	for _, arg in ipairs(cmd.argv) do
 		table.insert(argv, arg)
 	end
 	for arg in argv_string:gmatch("%S+") do
 		table.insert(argv, arg)
 	end
-	return make_cmd({command = cmd.command, argv = argv})
+	return make_cmd({type="exec", command = cmd.command, argv = argv})
 end
 
 function Cmd.bin_op(type, cmd1, cmd2)
@@ -179,8 +182,7 @@ end
 Cmd.mt.__tostring = Cmd.execute
 Cmd.mt.__concat = Cmd.concat
 Cmd.mt.__add = Cmd.and_op
-Cmd.mt.__call = Cmd.execute
-Cmd.mt.__index = Cmd.arg
+Cmd.mt.__call = Cmd.arg
 Cmd.mt.__bor = Cmd.pipe_op
 
 ls = cmd("/bin/ls")

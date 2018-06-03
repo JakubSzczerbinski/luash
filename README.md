@@ -41,3 +41,14 @@ grep = cmd("/bin/grep")
 ...
 ~~~
 
+## Plan zadań
+
+Według tygodni:
+1. Zaimplementowanie wywoływania poleceń
+
+2. Obsługa ';', '&&', '|' z basha
+
+3. Obsługa '&' z basha, i wywoływanie funkcji lua jako części polecenia
+
+4. Obsługa niektórych sygnałów, testowanie i szlifowanie implementacji.
+
