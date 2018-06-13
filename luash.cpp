@@ -8,6 +8,11 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <poll.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 
 extern "C"
 {
@@ -139,8 +144,75 @@ static int lua_exit(lua_State* L)
 	return 0;
 }
 
+static int lua_getcwd(lua_State* L)
+{
+	char* buff = (char*)malloc(sizeof(char) * 4096);
+	getcwd(buff, 4096);
+	lua_pushstring(L, buff);
+	free(buff);
+	return 1;
+}
+
+static int lua_chdir(lua_State* L)
+{
+	const char* path = luaL_checkstring(L, 1);
+	int result = chdir(path);
+	lua_pushinteger(L, result);
+	return 1;
+}
+
+static int lua_getdirentries(lua_State* L)
+{
+	int fd = luaL_checkinteger(L, 1);
+	char* buf = (char*)malloc(sizeof(char) * 4096);
+	off_t base_p = 0;
+	size_t size_read = 0;
+	struct dirent *dir;
+	lua_createtable(L, 0, 0);
+	int i = 1;
+	do
+	{
+		size_read = getdirentries(fd, buf, 4096, &base_p);
+	    dir = (struct dirent *)buf;
+	    while ((char *)dir < buf + size_read) {
+			lua_pushinteger(L, i++);
+	    	lua_createtable(L, 0, 4);
+
+			lua_pushstring(L, "d_type");
+			lua_pushinteger(L, dir->d_type);
+			lua_settable(L, -3);
+
+			lua_pushstring(L, "d_ino");
+			lua_pushinteger(L, dir->d_ino);
+			lua_settable(L, -3);
+
+			lua_pushstring(L, "d_off");
+			lua_pushinteger(L, dir->d_off);
+			lua_settable(L, -3);
+
+			lua_pushstring(L, "d_name");
+			lua_pushstring(L, dir->d_name);
+			lua_settable(L, -3);
+
+			lua_settable(L, -3);
+      		dir = (struct dirent *)((char *)dir + dir->d_reclen);
+    	}
+	} while (size_read > 0); 
+	return 1;
+}
+
+static int lua_open(lua_State* L)
+{
+	const char* path = luaL_checkstring(L, 1);
+	int fd = open(path, 0);
+	lua_pushinteger(L, fd);
+	return 1;
+}
+
 static const struct luaL_Reg luash[] = 
 {
+	{"getcwd", lua_getcwd},
+	{"chdir", lua_chdir},
 	{"execve", lua_execve},
 	{"fork", lua_fork},
 	{"waitpid", lua_waitpid},
@@ -149,6 +221,8 @@ static const struct luaL_Reg luash[] =
 	{"dup2", lua_dup2},
 	{"exit", lua_exit},
 	{"poll", lua_poll},
+	{"getdirentries", lua_getdirentries},
+	{"open", lua_open},
 	{NULL, NULL}
 };
 

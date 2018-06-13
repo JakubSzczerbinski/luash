@@ -1,9 +1,81 @@
 
-
 luash = require "luash"
 
 Cmd = {}
 Cmd.mt = {}
+
+function getcwd()
+	return luash.getcwd()
+end
+
+function pwd()
+	print(luash.getcwd())
+end
+
+function cd(path)
+	luash.chdir(path)
+end
+
+function ls(path)
+	return convert_to_cmd(function ()
+		if path == nil then
+			path = "."
+		end
+		fd = luash.open(path);
+		if fd == -1 then
+			print("Failed to open dir")
+			return
+		end
+		entries = luash.getdirentries(fd)
+		for index, entry in ipairs(entries) do
+			print (entry.d_name)
+		end
+		luash.close(fd);
+	end)
+end
+
+function lgrep(pattern)
+	return convert_to_cmd(function ()
+		for line in io.stdin:lines() do
+			if string.match(line, pattern) ~= nil then
+				print(line)
+			end
+		end
+	end)
+end
+
+function echo(str)
+	return convert_to_cmd(function()
+		print(str)
+	end)
+end
+
+function cat(path)
+	local file = io.stdin
+	if path ~= nil then
+		file = io.open(path, "r")
+		if file == nil then
+			return
+		end
+	end
+	return convert_to_cmd(function ()
+		for line in file:lines() do
+			print(line)
+		end
+	end)
+end
+
+function to_file(path)
+	return convert_to_cmd( function()
+		local file = io.open(path, "w")
+		if file == nil then
+			return
+		end
+		for line in io.stdin:lines() do
+			file:write(line .. '\n');
+		end
+	end)
+end
 
 function change_fd(initial_fd, target_fd)
 	if initial_fd ~= target_fd then
@@ -48,10 +120,19 @@ function convert_to_cmd(obj)
 				})
 		end
 	end
-	local function string_to_cmd(str)
-		if type(str) == "string" then
-			return cmd(str)
+	local function string_to_cmd(args)
+		if type(args) ~= "string" then
+			return
 		end
+		local argv = {}
+		for arg in args:gmatch("%S+") do
+			table.insert(argv, arg)
+		end
+		return make_cmd(
+			{ type="exec"
+			, command=argv[1]
+			, argv=argv
+			})
 	end
 	local converters = 
 	{ cmd_to_cmd
@@ -70,15 +151,7 @@ function convert_to_cmd(obj)
 end
 
 function cmd(args)
-	local argv = {}
-	for arg in args:gmatch("%S+") do
-		table.insert(argv, arg)
-	end
-	return make_cmd(
-		{ type="exec"
-		, command=argv[1]
-		, argv=argv
-		})
+	return convert_to_cmd(args)
 end
 
 function Cmd.run_exec(cmd, ifd, ofd)
@@ -87,6 +160,19 @@ function Cmd.run_exec(cmd, ifd, ofd)
 		make_fd_stdin(ifd)
 		make_fd_stdout(ofd)
 		luash.execve(cmd.command, cmd.argv)
+	else
+		local pid, exit_status = luash.waitpid(pid, 0)
+		return exit_status
+	end
+end
+
+function Cmd.run_function(cmd, ifd, ofd)
+	local pid = luash.fork()
+	if pid == 0 then
+		make_fd_stdin(ifd)
+		make_fd_stdout(ofd)
+		cmd.func()
+		luash.exit(0)
 	else
 		local pid, exit_status = luash.waitpid(pid, 0)
 		return exit_status
@@ -129,6 +215,7 @@ function Cmd.run_cmd(cmd, ifd, ofd)
 	, ["concat"] = Cmd.run_concat
 	, ["and"] = Cmd.run_and
 	, ["pipe"] = Cmd.run_pipe
+	, ["function"] = Cmd.run_function
 	}
 	for type, runner in pairs(cmd_runners) do
 		if cmd.type == type then
@@ -185,6 +272,3 @@ Cmd.mt.__add = Cmd.and_op
 Cmd.mt.__call = Cmd.arg
 Cmd.mt.__bor = Cmd.pipe_op
 
-ls = cmd("/bin/ls")
-tee = cmd("/usr/bin/tee")
-gcc = cmd("/usr/bin/gcc")
