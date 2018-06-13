@@ -44,11 +44,25 @@ grep = cmd("/bin/grep")
 ## Plan zadań
 
 Według tygodni:
-1. Zaimplementowanie wywoływania poleceń
+1. Zaimplementowanie wywoływania poleceń:
+- implementacja funkcji cmd, która wywoływołana ze stringiem zawierającym polecenie, zwraca obiekt typu cmd reprezentującej polecenie.
+- przeciążenie funkcji tostring typu cmd, aby wywoływała poleceni reprezentowane przez cmd
+- przeciążenie operatora wywołania cmd, aby wywołanie go zwracało nowy obiekt cmd przedstawiający to samo polecenie ale z dodanym argumentem przekazanym operatorowi wywołania.
 
 2. Obsługa ';', '&&', '|' z basha
+- Dodanie obsługi ; - przeciążenie operatora .. w cmd
+- Dodanie obsługa && - przeciążenie operatora + w cmd
+- Dodanie obsługi | - przeciążenie operator | w cmd
+- Operatory będą przyjmowały dwa argumenty, które są typu cmd albo można skonwertować do cmd (obecnie tylko string), i zwracały obiekt cmd, który będzie reprezentował takie złożenie poleceń.
+- Rozszerzenie operatora tostring o obsługę nowy rodzajów obiektów cmd
 
-3. Obsługa '&' z basha, i wywoływanie funkcji lua jako części polecenia
+3. Implementacja (cd, ls, pwd, cat, lgrep w lua), wywoływanie funkcji lua jako części polecenia
+- Umożliwienie skonwertowania funkcji lua do obiektu cmd. (Taka funkcja jest będzie uruchamiana w sforkowanym interpreterze lua)
+- Implementacja ls, pwd, cat, lgrep jako funkcji uruchamianej w sposób opisany wyżej
+- Implementacja cd jako zwykłej funkcji lua (nie może być funkcja-poleceniem ponieważ zmienia stan polecenia)
 
 4. Obsługa niektórych sygnałów, testowanie i szlifowanie implementacji.
+- Modyfikacja intepretera lua, aby obsługiwał wysyłanie (niektórych)sygnałów Ctrl+C -> przerwij program
+- Testowanie implemtacji (Przypadki brzegowe np.zerwane pipe'y)
+- Refaktor i oczyszczenie implementacji
 
