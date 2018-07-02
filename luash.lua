@@ -1,80 +1,55 @@
 
-luash = require "luash"
+luash = require "syscalls"
+lpeg = require "lpeg"
+pretty = require 'pl.pretty'
 
 Cmd = {}
 Cmd.mt = {}
 
-function getcwd()
-	return luash.getcwd()
+built_ins = {}
+
+function register_built_in(func_name, func)
+	built_ins[func_name] = func
 end
 
-function pwd()
-	print(luash.getcwd())
+function get_built_in(func_name)
+	return built_ins[func_name]
 end
 
-function cd(path)
-	luash.chdir(path)
-end
-
-function ls(path)
-	return convert_to_cmd(function ()
-		if path == nil then
-			path = "."
-		end
-		fd = luash.open(path);
-		if fd == -1 then
-			print("Failed to open dir")
-			return
-		end
-		entries = luash.getdirentries(fd)
-		for index, entry in ipairs(entries) do
-			print (entry.d_name)
-		end
-		luash.close(fd);
-	end)
-end
-
-function lgrep(pattern)
-	return convert_to_cmd(function ()
-		for line in io.stdin:lines() do
-			if string.match(line, pattern) ~= nil then
-				print(line)
-			end
-		end
-	end)
-end
-
-function echo(str)
-	return convert_to_cmd(function()
-		print(str)
-	end)
-end
-
-function cat(path)
-	local file = io.stdin
-	if path ~= nil then
-		file = io.open(path, "r")
-		if file == nil then
-			return
-		end
+function capture_program(program_name, ...)
+	local built_in = get_built_in(program_name)
+	if built_in == nil then
+		return make_cmd(
+			{ type="exec"
+			, command=program_name
+			, argv={program_name, ...}
+			})
 	end
-	return convert_to_cmd(function ()
-		for line in file:lines() do
-			print(line)
-		end
-	end)
+	local func = built_in(...)
+	return func
 end
 
-function to_file(path)
-	return convert_to_cmd( function()
-		local file = io.open(path, "w")
-		if file == nil then
-			return
-		end
-		for line in io.stdin:lines() do
-			file:write(line .. '\n');
-		end
-	end)
+function capture_operator(lhs, op, rhs)
+	local ops = 
+	{
+		["|"] = "pipe",
+		["&&"] = "and",
+		[";"] = "concat"
+	}
+	return Cmd.bin_op(ops[op], lhs, rhs)
+end
+
+function sh(cmd)
+	whitespace = lpeg.S(" \t\n");
+	operator = whitespace^0 * ((lpeg.P("|") + lpeg.P("&&") + lpeg.P(";")) / tostring);
+	word = whitespace^0 * ((lpeg.R("az") + lpeg.R("AZ") + lpeg.S("-\"=./_") + lpeg.R("09"))^1 / tostring);
+	program = word^1 / capture_program;
+	shell = lpeg.P({
+		"command",
+		command = ((program * operator * lpeg.V("command")) / capture_operator + program),
+	})
+	local result = shell:match(cmd)
+	return result
 end
 
 function change_fd(initial_fd, target_fd)
@@ -117,6 +92,7 @@ function convert_to_cmd(obj)
 			return make_cmd(
 				{ type="function"
 				, func=func
+				, mutates=false
 				})
 		end
 	end
@@ -167,15 +143,19 @@ function Cmd.run_exec(cmd, ifd, ofd)
 end
 
 function Cmd.run_function(cmd, ifd, ofd)
-	local pid = luash.fork()
-	if pid == 0 then
-		make_fd_stdin(ifd)
-		make_fd_stdout(ofd)
-		cmd.func()
-		luash.exit(0)
+	if not (cmd.mutates) then
+		local pid = luash.fork()
+		if pid == 0 then
+			make_fd_stdin(ifd)
+			make_fd_stdout(ofd)
+			cmd.func()
+			luash.exit(0)
+		else
+			local pid, exit_status = luash.waitpid(pid, 0)
+			return exit_status
+		end
 	else
-		local pid, exit_status = luash.waitpid(pid, 0)
-		return exit_status
+		cmd.func()
 	end
 end
 
@@ -272,3 +252,88 @@ Cmd.mt.__add = Cmd.and_op
 Cmd.mt.__call = Cmd.arg
 Cmd.mt.__bor = Cmd.pipe_op
 
+
+function getcwd()
+	return luash.getcwd()
+end
+
+function lua_pwd()
+	print(getcwd())
+end
+
+function lua_cd(path)
+	local func = function() luash.chdir(path) end
+	return make_cmd(
+	{ type="function"
+	, func=func
+	, mutates=true
+	})
+end
+
+function lua_ls(path)
+	return convert_to_cmd(function ()
+		if path == nil then
+			path = "."
+		end
+		fd = luash.open(path);
+		if fd == -1 then
+			print("Failed to open dir")
+			return
+		end
+		entries = luash.getdirentries(fd)
+		for index, entry in ipairs(entries) do
+			print (entry.d_name)
+		end
+		luash.close(fd);
+	end)
+end
+
+function lua_grep(pattern)
+	return convert_to_cmd(function ()
+		for line in io.stdin:lines() do
+			if string.match(line, pattern) ~= nil then
+				print(line)
+			end
+		end
+	end)
+end
+
+function lua_echo(str)
+	return convert_to_cmd(function()
+		print(str)
+	end)
+end
+
+function lua_cat(path)
+	local file = io.stdin
+	if path ~= nil then
+		file = io.open(path, "r")
+		if file == nil then
+			return
+		end
+	end
+	return convert_to_cmd(function ()
+		for line in file:lines() do
+			print(line)
+		end
+	end)
+end
+
+function lua_to_file(path)
+	return convert_to_cmd( function()
+		local file = io.open(path, "w")
+		if file == nil then
+			return
+		end
+		for line in io.stdin:lines() do
+			file:write(line .. '\n');
+		end
+	end)
+end
+
+register_built_in("cat", lua_cat)
+register_built_in("to_file", lua_to_file)
+register_built_in("echo", lua_echo)
+register_built_in("lls", lua_ls)
+register_built_in("lgrep", lua_grep)
+register_built_in("cd", lua_cd)

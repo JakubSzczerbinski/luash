@@ -1,7 +1,6 @@
-#include <lua.hpp>
 #include <unistd.h>
-#include <cstring>
-#include <cerrno>
+#include <string.h>
+#include <errno.h>
 #include <sys/param.h>
 #include <sys/wait.h>
 #include <sys/types.h>
@@ -13,9 +12,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-
-extern "C"
-{
+#include <lua.h>
+#include <lauxlib.h>
 
 static int lua_fork(lua_State* L)
 {
@@ -34,7 +32,7 @@ static int lua_execve(lua_State* L)
 	const char* path = luaL_checkstring(L, 1);
 	char** argv = (char**)malloc(sizeof(char*) * ARG_MAX);
 
-	if (not lua_istable(L, 2))
+	if (! lua_istable(L, 2))
 	{
 		result = -1;
 		goto end;
@@ -47,7 +45,7 @@ static int lua_execve(lua_State* L)
 			result = -1;
 			goto end;
 		}
-		if (not lua_isstring(L, -1))
+		if (! lua_isstring(L, -1))
 		{
 			result = -1;
 			goto end;
@@ -62,7 +60,7 @@ static int lua_execve(lua_State* L)
 	}
 	argv[i] = NULL;
 
-	result = execvpe(path, argv, environ);
+	result = execvp(path, argv);
 	if (result != 0) result = errno;
 end:
 	lua_pushnumber(L, result);
@@ -113,7 +111,7 @@ static int lua_poll(lua_State* L)
 	int timeout = luaL_checkinteger(L, 2);
 	int nfds = lua_rawlen(L,1);
 
-	if (not lua_istable(L, 2))
+	if (! lua_istable(L, 2))
 	{
 		lua_pushinteger(L, 0);
 		lua_pushinteger(L, 1);
@@ -226,10 +224,9 @@ static const struct luaL_Reg luash[] =
 	{NULL, NULL}
 };
 
-extern int luaopen_luash (lua_State* L)
+extern int luaopen_syscall (lua_State* L)
 {
 	luaL_newlib(L, luash);
 	return 1;
 }
 
-}

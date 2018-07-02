@@ -63,6 +63,6 @@ Według tygodni:
 
 4. Obsługa niektórych sygnałów, testowanie i szlifowanie implementacji.
 - Modyfikacja intepretera lua, aby obsługiwał wysyłanie (niektórych)sygnałów Ctrl+C -> przerwij program
-- Testowanie implemtacji (Przypadki brzegowe np.zerwane pipe'y)
+- Testowanie implemetacji (Przypadki brzegowe np.zerwane pipe'y)
 - Refaktor i oczyszczenie implementacji
 
